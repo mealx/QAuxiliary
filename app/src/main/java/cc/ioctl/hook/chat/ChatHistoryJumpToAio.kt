@@ -178,6 +178,7 @@ object ChatHistoryJumpToAio : CommonSwitchFunctionHook(
                     time = args[4] as Long,
                     shmsgseq = args[5] as Long,
                     chatType = args[6] as Int,
+                    keepCallerInBackStack = ChatHistoryJumpBackStack.isEnabled,
                 )
                 param.result = null
             }
@@ -213,6 +214,7 @@ object ChatHistoryJumpToAio : CommonSwitchFunctionHook(
                     time = time,
                     shmsgseq = shmsgseq,
                     chatType = 1,
+                    keepCallerInBackStack = ChatHistoryJumpBackStack.isEnabled,
                 )
                 param.result = null
             }
@@ -244,6 +246,7 @@ object ChatHistoryJumpToAio : CommonSwitchFunctionHook(
                     time = 0L,
                     shmsgseq = args[2] as Long,
                     chatType = 1,
+                    keepCallerInBackStack = ChatHistoryJumpBackStack.isEnabled,
                 )
                 param.result = null
             }
@@ -269,8 +272,10 @@ object ChatHistoryJumpToAio : CommonSwitchFunctionHook(
             hookBeforeIfEnabled(method) { param ->
                 if (ChatHistoryLocator.bypassGalleryHook.get()) return@hookBeforeIfEnabled
                 val args = param.args
+                val activity = args[0] as Activity
+                val keepBackStack = ChatHistoryJumpBackStack.isEnabled
                 ChatHistoryLocator.jumpToTargetAIOPosition(
-                    activity = args[0] as Activity,
+                    activity = activity,
                     uinType = args[1] as Int,
                     uin = args[2] as String,
                     troopUin = args[3] as? String,
@@ -278,7 +283,12 @@ object ChatHistoryJumpToAio : CommonSwitchFunctionHook(
                     shmsgseq = args[5] as Long,
                     chatType = args[6] as Int,
                     isEmotion = args[7] as Boolean,
+                    keepCallerInBackStack = keepBackStack,
                 )
+                if (keepBackStack) {
+                    // 查看器夹在聊天记录页和 AIO 之间；finish 掉它，返回键才能直接回历史记录页
+                    activity.finish()
+                }
                 param.result = null
             }
             ok = true
@@ -303,8 +313,10 @@ object ChatHistoryJumpToAio : CommonSwitchFunctionHook(
             hookBeforeIfEnabled(method) { param ->
                 if (ChatHistoryLocator.bypassGalleryHook.get()) return@hookBeforeIfEnabled
                 val args = param.args
+                val activity = args[0] as Activity
+                val keepBackStack = ChatHistoryJumpBackStack.isEnabled
                 ChatHistoryLocator.jumpToTargetAIOPosition(
-                    activity = args[0] as Activity,
+                    activity = activity,
                     uinType = args[1] as Int,
                     uin = args[2] as String,
                     troopUin = args[3] as? String,
@@ -312,7 +324,12 @@ object ChatHistoryJumpToAio : CommonSwitchFunctionHook(
                     shmsgseq = args[5] as Long,
                     chatType = args[6] as Int,
                     isEmotion = args[7] as Boolean,
+                    keepCallerInBackStack = keepBackStack,
                 )
+                if (keepBackStack) {
+                    // 查看器夹在聊天记录页和 AIO 之间；finish 掉它，返回键才能直接回历史记录页
+                    activity.finish()
+                }
                 param.result = null
             }
             ok = true

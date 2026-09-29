@@ -69,8 +69,12 @@ object ChatHistoryLocator {
     private const val KEY_UIN_TYPE = "uintype"
     private const val KEY_IS_SHOW_ENTRANCE = "entrance"
 
+    // Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP
     private const val GALLERY_JUMP_FLAGS = 603979776
+    // Intent.FLAG_ACTIVITY_CLEAR_TOP
     private const val OPEN_CHAT_FRAGMENT_FLAGS = 67108864
+    // Intent.FLAG_ACTIVITY_SINGLE_TOP
+    private const val SINGLE_TOP_FLAG = 536870912
 
     /**
      * 8890 频道（10014）仍复用 QQ 自己的 `GalleryJumpUtils.a` 走 guild API；
@@ -94,6 +98,7 @@ object ChatHistoryLocator {
         isEmotion: Boolean = false,
         ntMsgId: Long = 0L,
         peerUid: String? = null,
+        keepCallerInBackStack: Boolean = false,
     ) {
         if (QAppUtils.isQQnt()) {
             jumpToTargetNTAIOPosition(
@@ -116,6 +121,7 @@ object ChatHistoryLocator {
                 shmsgseq = shmsgseq,
                 chatType = chatType,
                 isEmotion = isEmotion,
+                keepCallerInBackStack = keepCallerInBackStack,
             )
         }
     }
@@ -139,6 +145,7 @@ object ChatHistoryLocator {
         shmsgseq: Long,
         chatType: Int,
         isEmotion: Boolean,
+        keepCallerInBackStack: Boolean = false,
     ) {
         if (activity.isFinishing) {
             return
@@ -152,16 +159,27 @@ object ChatHistoryLocator {
             // 从聊天记录进查看器时，PeakUtils 会把 INIT_ACTIVITY_CLASS_NAME 填成
             // ChatHistoryActivity，直接 setClassName 会又打开聊天记录页。
             // 只有真正的 AIO 宿主类才复用，否则一律回 SplashActivity。
+            //
+            // 开启「定位后返回聊天记录」时优先落到独立的 ChatActivity：
+            // 它的返回键就是 finish()，可以直接回到下面的聊天记录页。
+            // 而 SplashActivity 内的 AIO 返回只会切回消息列表（BaseChatPie.f(0)
+            // → ab()），回不到聊天记录页。
             val initClassName = activity.intent?.getStringExtra(KEY_PHOTO_INIT_ACTIVITY_CLASS_NAME)
-            if (initClassName == SPLASH_ACTIVITY_CLASS_NAME || initClassName == CHAT_ACTIVITY_CLASS_NAME) {
-                intent.setClassName(activity, initClassName)
-            } else {
-                val splashActivity = Initiator.loadClass(SPLASH_ACTIVITY_CLASS_NAME)
-                intent.setClass(activity, splashActivity)
+            val targetClassName = when {
+                keepCallerInBackStack && initClassName != CHAT_ACTIVITY_CLASS_NAME -> CHAT_ACTIVITY_CLASS_NAME
+                initClassName == SPLASH_ACTIVITY_CLASS_NAME -> SPLASH_ACTIVITY_CLASS_NAME
+                initClassName == CHAT_ACTIVITY_CLASS_NAME -> CHAT_ACTIVITY_CLASS_NAME
+                else -> SPLASH_ACTIVITY_CLASS_NAME
             }
+            intent.setClassName(activity, targetClassName)
             // AIOUtils.a(intent, null) / BaseAIOUtils.a
             intent.putExtra("open_chatfragment", true)
-            intent.addFlags(OPEN_CHAT_FRAGMENT_FLAGS)
+            // CLEAR_TOP 会把调用方（聊天记录页 / 查看器）从返回栈里清掉，
+            // 于是返回回不到聊天记录。开启「定位后返回聊天记录」时去掉
+            // CLEAR_TOP，只保留 SINGLE_TOP，把独立的 ChatActivity 压在原页面上方。
+            if (!keepCallerInBackStack) {
+                intent.addFlags(OPEN_CHAT_FRAGMENT_FLAGS)
+            }
 
             val timeOrSeq = if (chatType == 1 || chatType == 3000) shmsgseq else time
             val bundle = Bundle()
@@ -176,7 +194,7 @@ object ChatHistoryLocator {
             intent.putExtra("uin", uin)
             intent.putExtra(KEY_UIN_TYPE, uinType)
             intent.putExtra("troop_uin", troopUin)
-            intent.addFlags(GALLERY_JUMP_FLAGS)
+            intent.addFlags(if (keepCallerInBackStack) SINGLE_TOP_FLAG else GALLERY_JUMP_FLAGS)
             intent.putExtra(KEY_IS_SHOW_ENTRANCE, 1)
             activity.startActivity(intent)
         } catch (t: Throwable) {
