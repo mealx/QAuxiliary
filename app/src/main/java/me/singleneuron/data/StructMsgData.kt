@@ -41,11 +41,13 @@ data class StructMsgData(
     )
 
     init {
-        try {
-            val appid = JSONObject(extra).optLong("appid", -1)
-            news.appid = if (appid == -1L) null else appid.toString()
-        } catch (e: Exception) {
-            Log.e(e)
+        if (extra.isNotEmpty()) {
+            try {
+                val appid = JSONObject(extra).optLong("appid", -1)
+                news.appid = if (appid == -1L) null else appid.toString()
+            } catch (e: Exception) {
+                Log.e(e)
+            }
         }
     }
 

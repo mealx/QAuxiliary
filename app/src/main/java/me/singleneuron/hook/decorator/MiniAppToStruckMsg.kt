@@ -31,6 +31,7 @@ import io.github.qauxv.router.decorator.BaseSwitchFunctionDecorator
 import io.github.qauxv.router.decorator.IItemBuilderFactoryHookDecorator
 import io.github.qauxv.router.dispacher.ItemBuilderFactoryHook
 import io.github.qauxv.util.Initiator
+import io.github.qauxv.util.Log
 import io.github.qauxv.util.QQVersion
 import io.github.qauxv.util.decodeToDataClass
 import io.github.qauxv.util.hostInfo
@@ -57,17 +58,23 @@ object MiniAppToStruckMsg : BaseSwitchFunctionDecorator(), IItemBuilderFactoryHo
         param: XC_MethodHook.MethodHookParam
     ): Boolean {
         if (hostInfo.versionCode < QQVersion.QQ_8_2_0) return false
-        return if (Initiator.loadClass("com.tencent.mobileqq.data.MessageForArkApp").isAssignableFrom(chatMessage.javaClass)) {
-            val arkAppMsg = chatMessage.get("ark_app_message") ?: return false
-            val json = arkAppMsg.invoke("toAppXml") as String
-            val jsonObj = JSONObject(json)
-            if (jsonObj.optString("app").contains("com.tencent.miniapp", true)) {
-                val miniAppArkData = json.decodeToDataClass<MiniAppArkData>()
-                val structMsgJson = StructMsgData.fromMiniApp(miniAppArkData).toString()
-                arkAppMsg.invoke("fromAppXml", structMsgJson)
-                true
+        return try {
+            if (Initiator.loadClass("com.tencent.mobileqq.data.MessageForArkApp").isAssignableFrom(chatMessage.javaClass)) {
+                val arkAppMsg = chatMessage.get("ark_app_message") ?: return false
+                val json = arkAppMsg.invoke("toAppXml") as String
+                val jsonObj = JSONObject(json)
+                if (jsonObj.optString("app").contains("com.tencent.miniapp", true)) {
+                    val miniAppArkData = json.decodeToDataClass<MiniAppArkData>()
+                    val structMsgJson = StructMsgData.fromMiniApp(miniAppArkData).toString()
+                    arkAppMsg.invoke("fromAppXml", structMsgJson, String::class.java)
+                    true
+                } else false
             } else false
-        } else false
+        } catch (t: Throwable) {
+            // 单条消息解析失败不能把整个装饰器打挂，否则 QA 会把功能标成异常。
+            Log.e("MiniAppToStruckMsg: convert failed", t)
+            false
+        }
     }
 
     override fun onNtCreateItemHook(
