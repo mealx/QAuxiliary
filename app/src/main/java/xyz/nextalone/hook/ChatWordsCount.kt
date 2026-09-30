@@ -91,6 +91,10 @@ object ChatWordsCount : CommonConfigFunctionHook("na_chat_words_count_kt", array
     private const val timeCfg = "na_chat_words_count_kt_time"
     private const val colorCfg = "na_chat_words_count_kt_color"
     private const val strCfg = "na_chat_words_count_kt_str"
+
+    /** 侧滑栏根 ViewGroup，构造时缓存，供 onResume 复用。 */
+    private var cachedViewGroup: ViewGroup? = null
+
     private fun getChatWords(): String {
         return getExFriendCfg()?.let {
             val isToday = Date().today == it.getStringOrDefault(timeCfg, "")
@@ -115,12 +119,16 @@ object ChatWordsCount : CommonConfigFunctionHook("na_chat_words_count_kt", array
         if (ViewGroup::class.java.isAssignableFrom(ctor.parameterTypes.last())) {
             // for after QQ 8.8.20
             kQQSettingMeView.hookBeforeAllConstructors {
-                val viewGroup = it.args.last() as ViewGroup
+                val viewGroup = it.args.last() as? ViewGroup ?: return@hookBeforeAllConstructors
+                cachedViewGroup = viewGroup
                 updateChatWordView(viewGroup)
             }
         }
         DexKit.loadMethodFromCache(NQQSettingMe_onResume)?.hookAfter(this) {
-            val viewGroup = it.thisObject.get(ViewGroup::class.java) as ViewGroup
+            // QQSettingMe.U 在 onResume 时可能还是 null，不能强转；优先用构造时缓存的 ViewGroup
+            val viewGroup = cachedViewGroup
+                ?: (it.thisObject.get(ViewGroup::class.java) as? ViewGroup)
+                ?: return@hookAfter
             updateChatWordView(viewGroup)
         }
         DexKit.loadMethodFromCache(NChatActivityFacade_sendMsgButton)?.hookAfter(this)
@@ -163,34 +171,35 @@ object ChatWordsCount : CommonConfigFunctionHook("na_chat_words_count_kt", array
     }
 
     private fun updateChatWordView(viewGroup: ViewGroup) {
-        val relativeLayout: RelativeLayout =
+        val relativeLayout: RelativeLayout? =
             if (HostInfo.requireMinQQVersion(QQVersion.QQ_8_8_80) && !QAppUtils.isQQnt()) {
                 val getId = MField.GetStaticField<Int>("com.tencent.mobileqq.R\$id".clazz, "drawer_top_sig_layout")
-                viewGroup.findViewById(getId)
+                viewGroup.findViewById(getId) as? RelativeLayout
             } else {
-                viewGroup.findHostView<RelativeLayout>(getConfig(ChatWordsCount::class.java.simpleName))!!
+                viewGroup.findHostView<RelativeLayout>(getConfig(ChatWordsCount::class.java.simpleName))
             }
+        if (relativeLayout == null) return
         // what accessibility service tells us does NOT match the view pragmatically does
         // call it ghost view for the time being...
         // TODO 2022-03-07 kill the ghost...
-        val ghostFrameLayout = relativeLayout.parent as ViewGroup
+        val ghostFrameLayout = relativeLayout.parent as? ViewGroup ?: return
         // if ghostFrameLayout is a RelativeLayout, it means the ghost is already there
         var textView: TextView? = ghostFrameLayout.findViewById(io.github.qauxv.R.id.chat_words_count)
         if (textView == null) {
             injectChatWordView(viewGroup.context, ghostFrameLayout)
-            textView = (relativeLayout.parent as ViewGroup).findViewById(io.github.qauxv.R.id.chat_words_count)
+            textView = ghostFrameLayout.findViewById(io.github.qauxv.R.id.chat_words_count)
         }
-        textView!!.text = getChatWords()
+        textView?.text = getChatWords()
     }
 
     private fun injectChatWordView(context: Context, viewGroup: ViewGroup) {
         val relativeLayout: RelativeLayout =
-            if (HostInfo.requireMinQQVersion(QQVersion.QQ_8_8_80) && !QAppUtils.isQQnt()) {
+            (if (HostInfo.requireMinQQVersion(QQVersion.QQ_8_8_80) && !QAppUtils.isQQnt()) {
                 val getId = MField.GetStaticField<Int>("com.tencent.mobileqq.R\$id".clazz, "drawer_top_sig_layout")
-                viewGroup.findViewById(getId)
+                viewGroup.findViewById(getId) as? RelativeLayout
             } else {
-                viewGroup.findHostView<RelativeLayout>(getConfig(ChatWordsCount::class.java.simpleName))!!
-            }
+                viewGroup.findHostView<RelativeLayout>(getConfig(ChatWordsCount::class.java.simpleName))
+            }) ?: return
         val textView = TextView(context)
         textView.text = getChatWords()
         textView.setTextColor(
